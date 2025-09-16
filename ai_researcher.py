@@ -1,5 +1,5 @@
 # Step1: Install & Import dependencies
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import create_react_agent
 from arxiv_tool import arxiv_search
 from read_pdf import read_pdf
@@ -11,10 +11,7 @@ load_dotenv()
 
 # Step2: Setup LLM and tools
 tools = [arxiv_search, read_pdf, render_latex_pdf]
-model = ChatGroq(
-     model="mixtral-8x7b-32768",  # Or use "llama3-70b-8192" for Llama 3
-    api_key=os.getenv("GROQ_API_KEY")
-)
+model = ChatGoogleGenerativeAI(model="gemini-2.5-pro", api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Step3: Create the ReAct agent graph
 graph = create_react_agent(model, tools=tools)

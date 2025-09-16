@@ -18,14 +18,12 @@ from langgraph.prebuilt import ToolNode
 tools = [arxiv_search, read_pdf, render_latex_pdf]
 tool_node = ToolNode(tools)
 
+
 # Step3: Setup LLM
 import os
-from langchain_groq import ChatGroq  # Changed to Groq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
-model = ChatGroq(
-    model="mixtral-8x7b-32768",  # Or use "llama3-70b-8192" for Llama 3
-    api_key=os.getenv("GROQ_API_KEY")
-).bind_tools(tools)
+model = ChatGoogleGenerativeAI(model="gemini-2.5-pro", api_key=os.getenv("GOOGLE_API_KEY")).bind_tools(tools)
 model = model.bind_tools(tools)
 
 # Step4: Setup graph
@@ -37,6 +35,7 @@ def call_model(state: State):
     messages = state["messages"]
     response = model.invoke(messages)
     return {"messages": [response]}
+
 
 def should_continue(state: State) -> Literal["tools", END]:
     messages = state["messages"]
@@ -89,7 +88,7 @@ def print_stream(stream):
         print(f"Message received: {message.content[:200]}...")
         message.pretty_print()
 
-"""while True:
+while True:
     user_input = input("User: ")
     if user_input:
         messages = [
@@ -99,4 +98,4 @@ def print_stream(stream):
         input_data = {
             "messages" : messages
         }
-        print_stream(graph.stream(input_data, config, stream_mode="values"))"""
+        print_stream(graph.stream(input_data, config, stream_mode="values"))
