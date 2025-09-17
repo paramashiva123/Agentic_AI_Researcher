@@ -1,0 +1,159 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{authblk}
+
+\title{Learning to Reason: An Adaptive Decomposition Framework for Long-Horizon AI Agents}
+\author[1]{AI Researcher}
+\affil[1]{Skunkworks Division, The AI Institute}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recent advancements in long-horizon AI agents have been driven by structured reasoning frameworks that mitigate the context saturation and error propagation issues inherent in mono-contextual models. Frameworks like IterResearch introduce an iterative loop of thinking, reporting, and acting, which has proven effective. However, these frameworks rely on a static, predefined reasoning loop, which is a significant limitation as different problems demand different research strategies. This paper introduces the Adaptive Decomposition Framework (ADF), a novel approach that replaces the static loop with a dynamic, learned policy. We model the research process as a meta-level Markov Decision Process (Meta-MDP), where a high-level reinforcement learning agent, the "Conductor," learns to select the most effective cognitive action at each step. The Conductor's action space includes planning, tool execution, information synthesis, verification, and even spawning subordinate agents for parallel investigations. We design a shaped reward function that encourages information gain, efficiency, and factual accuracy, providing a robust learning signal. We hypothesize that ADF will significantly outperform static-loop agents in both performance and efficiency on complex, multi-faceted research tasks. This work represents a shift from handcrafted reasoning structures to learned, adaptive problem-solving strategies for autonomous agents.
+\end{abstract}
+
+\section{Introduction}
+The pursuit of artificial general intelligence has led to the development of sophisticated autonomous agents capable of tackling complex, long-horizon tasks. A primary challenge in this domain is enabling agents to reason effectively over extended periods, which involves gathering information, synthesizing findings, and maintaining a coherent plan. Early agent architectures, often mono-contextual, suffered from critical limitations such as context suffocation, where the limited context window becomes saturated with historical data, and irreversible noise contamination, where early errors corrupt the entire reasoning chain \cite{qiao2025webresearcher}.
+
+To address these issues, structured reasoning frameworks have emerged. A notable example is the IterResearch paradigm \cite{qiao2025webresearcher}, which reformulates research as a Markov Decision Process (MDP) with a fixed iterative loop: Think, Report, and Act. This structure enforces periodic synthesis, preventing context bloat and allowing for more sustained reasoning. While a significant improvement, the core limitation of such frameworks is their static nature. The "one-size-fits-all" reasoning loop is suboptimal because complex problems are heterogeneous. Some queries may require extensive upfront planning, others demand rapid, exploratory tool use, while some could be best solved by decomposing them into parallel sub-investigations.
+
+In this paper, we argue that the next step in agent evolution is to move from predefined reasoning loops to learned, adaptive strategies. We introduce the **Adaptive Decomposition Framework (ADF)**, where a meta-level reinforcement learning (RL) agent, named the "Conductor," learns to dynamically orchestrate the research process itself. Instead of following a fixed cycle, the Conductor selects from a rich set of cognitive actions to construct a problem-solving strategy tailored to the specific task at hand.
+
+Our primary contributions are:
+\begin{enumerate}
+    \item We formalize the agent's reasoning process as a meta-level MDP, allowing an RL agent to learn high-level cognitive strategies.
+    \item We define a diverse set of cognitive meta-actions, including `PLAN`, `SYNTHESIZE`, and `SPAWN_AGENT`, which enable far more flexible and complex reasoning patterns than static loops.
+    \item We design a comprehensive shaped reward function that provides a dense learning signal based on information gain, efficiency, and factual verification, making the training of the meta-level policy feasible.
+\end{enumerate}
+We believe that the ADF represents a fundamental step towards more autonomous and intelligent agents that not only solve problems but also learn *how* to solve them.
+
+\section{Related Work}
+Our work builds upon several key areas in AI agent research.
+
+\textbf{Mono-Contextual vs. Structured Reasoning:} Early web-enabled agents often employed a mono-contextual paradigm, accumulating all observations and thoughts into a single, ever-growing context. While simple, this approach is not scalable for long-horizon tasks \cite{qiao2025webresearcher}. To overcome this, structured reasoning frameworks were proposed. The ReAct framework \cite{yao2022react} demonstrated the power of interleaving reasoning traces and task-specific actions. The IterResearch framework \cite{qiao2025webresearcher} further refined this by introducing a "Report" step that acts as a central memory, explicitly combating context degradation. Our work inherits the iterative synthesis idea but generalizes the static loop into a learned policy.
+
+\textbf{Hierarchical Reinforcement Learning (HRL):} HRL has long been used to solve complex tasks by breaking them down into simpler sub-tasks \cite{barto2003recent}. A high-level policy learns to set goals (sub-tasks), and a low-level policy learns to achieve them. The ADF can be viewed as a form of HRL where our meta-level "Conductor" agent sets high-level cognitive goals (e.g., `PLAN`, `VERIFY`), and a lower-level model (a powerful LLM) is responsible for executing the details of that action.
+
+\section{The Adaptive Decomposition Framework (ADF)}
+We formalize the high-level research process as a meta-level Markov Decision Process (Meta-MDP), defined by the tuple $(\mathcal{S}, \mathcal{A}, \mathcal{P}, \mathcal{R}, \gamma)$. A meta-level policy, $\pi_\theta(a_t | s_t)$, is learned to navigate this process.
+
+\subsection{State Space ($\mathcal{S}$)}
+The state $s_t \in \mathcal{S}$ provides a comprehensive snapshot of the research at time $t$. It is composed of the following elements:
+\begin{itemize}
+    \item \textbf{Initial Query ($q$):} The original, unchanged user query.
+    \item \textbf{Synthesized Report ($R_t$):} The agent's central memory, a continuously updated summary of all verified findings.
+    \item \textbf{Working Memory ($M_t$):} A summary of the last $k$ tool interactions and observations that have not yet been integrated into $R_t$.
+    \item \textbf{Confidence Score ($c_t$):} A scalar value $c_t \in [0, 1]$ representing the agent's estimated probability of being able to answer the query $q$ with the information in $R_t$.
+\end{itemize}
+These components are embedded and concatenated to form a state vector $s_t = [\text{emb}(q), \text{emb}(R_t), \text{emb}(M_t), c_t]$.
+
+\subsection{Action Space ($\mathcal{A}$)}
+The Conductor agent selects a meta-action $a_t \in \mathcal{A}$ from a set of high-level cognitive operations:
+\begin{itemize}
+    \item \textbf{PLAN:} The agent refines its strategy by breaking down the main query into a more detailed set of sub-questions or hypotheses. This action does not involve external tools.
+    \item \textbf{EXECUTE\_TOOL:} The agent selects and uses an external tool (e.g., Search, Scholar, Python) to gather new information related to a specific sub-question.
+    \item \textbf{SYNTHESIZE:} The agent integrates information from the working memory $M_t$ into the central report $R_t$. This involves resolving conflicts, removing redundancies, and updating the overall narrative.
+    \item \textbf{VERIFY:} To increase confidence, the agent cross-references a specific claim from the report $R_t$ using a different tool or source.
+    \item \textbf{SPAWN\_AGENT:} For highly complex or parallelizable sub-questions, the agent can instantiate a subordinate agent to investigate it asynchronously. The sub-agent returns a summary report upon completion.
+    \item \textbf{TERMINATE:} The agent concludes the research and generates the final answer based on the synthesized report $R_t$.
+\end{itemize}
+
+\subsection{Reward Function ($\mathcal{R}$)}
+To provide a dense and meaningful learning signal, we design a shaped reward function $r_t$ that is a weighted sum of several components:
+\begin{equation}
+    r_t = w_{\text{gain}}r_{\text{gain}} + w_{\text{eff}}r_{\text{eff}} + w_{\text{conf}}r_{\text{conf}} + w_{\text{red}}r_{\text{red}}
+\end{equation}
+The total reward for a trajectory $\tau$ is $R(\tau) = R_{\text{final}} + \sum_{t=0}^{T-1} \gamma^t r_t$, where $R_{\text{final}}$ is a large terminal reward (+1 for a correct final answer, -1 for an incorrect one).
+
+The shaping components are:
+\begin{itemize}
+    \item \textbf{Information Gain ($r_{\text{gain}}$):} Rewards actions that add novel, relevant information. It is calculated after a `SYNTHESIZE` action as the semantic change in the report:
+    \begin{equation}
+        r_{\text{gain}} = 1 - \frac{\text{emb}(R_{t-1}) \cdot \text{emb}(R_t)}{\|\text{emb}(R_{t-1})\| \|\text{emb}(R_t)\|}
+    \end{equation}
+    \item \textbf{Efficiency ($r_{\text{eff}}$):} A small negative constant for each step to encourage shorter solution paths.
+    \item \textbf{Confidence Bonus ($r_{\text{conf}}$):} A positive reward given for a `VERIFY` action that successfully confirms a fact, leading to an increase in the confidence score $c_t$.
+    \item \textbf{Redundancy Penalty ($r_{\text{red}}$):} A negative reward if an `EXECUTE_TOOL` action retrieves information that is already semantically contained within the report $R_t$.
+\end{itemize}
+
+\subsection{Learning Algorithm}
+The Conductor's policy $\pi_\theta(a_t | s_t)$ is parameterized by a neural network (e.g., a transformer) and trained using Proximal Policy Optimization (PPO) \cite{schulman2017proximal}. The PPO objective function balances policy updates and stability, making it suitable for this complex, high-variance task. The objective is to maximize the expected cumulative reward:
+\begin{equation}
+    J(\theta) = \mathbb{E}_{\tau \sim \pi_{\theta}} \left[ \sum_{t=0}^{T} \gamma^t r_t \right]
+\end{equation}
+
+\section{Experimental Setup}
+We will evaluate the ADF against two strong baselines on challenging long-horizon question-answering benchmarks.
+\begin{itemize}
+    \item \textbf{Baselines:}
+    \begin{enumerate}
+        \item \textbf{Mono-Contextual Agent:} A standard agent that accumulates all history into a single context window.
+        \item \textbf{Static Iterative Agent:} An implementation of the `IterResearch` paradigm with its fixed "Think-Report-Action" loop.
+    \end{enumerate}
+    \item \textbf{Datasets:} We will use Humanity's Last Exam (HLE) \cite{phan2025humanity} and BrowseComp \cite{wei2025browsecomp}, which require deep reasoning, multi-step tool use, and information synthesis.
+    \item \textbf{Evaluation Metrics:}
+    \begin{enumerate}
+        \item \textbf{Accuracy:} The primary metric will be `pass@1`.
+        \item \textbf{Efficiency:} We will measure the average number of tool calls and total reasoning steps required to reach a solution.
+    \end{enumerate}
+\end{itemize}
+We will also perform a qualitative analysis of the reasoning strategies learned by the ADF agent to showcase its adaptability.
+
+\section{Expected Results and Analysis}
+We expect the ADF agent to significantly outperform both baselines.
+\begin{itemize}
+    \item \textbf{Higher Accuracy:} The ability to adapt its strategy should allow ADF to solve a wider range of complex problems that stymie the rigid logic of the static agent. For instance, on a query requiring fact-checking, ADF might learn to prioritize `VERIFY` actions, while on an open-ended query, it might favor a sequence of `PLAN` and `EXECUTE_TOOL` actions.
+    \item \textbf{Greater Efficiency:} By learning to avoid redundant actions and choosing the most direct path to a solution, we expect ADF to use fewer tool calls and steps on average compared to the static iterative agent, which must follow its loop regardless of the immediate need.
+    \item \textbf{Novel Strategies:} Qualitative analysis of ADF's action sequences will reveal emergent, intelligent reasoning patterns. For example, we might observe the agent learning to spawn parallel sub-agents to investigate multiple facets of a problem simultaneously, a strategy not possible in the baseline models.
+\end{itemize}
+An ablation study will also be conducted to validate the contribution of each component of our shaped reward function. For example, removing the information gain reward ($r_{\text{gain}}$) might lead the agent to engage in repetitive, low-value tool use.
+
+\section{Conclusion and Future Work}
+This paper presented the Adaptive Decomposition Framework (ADF), a novel approach for building long-horizon AI agents that learn *how* to reason. By modeling the research process as a meta-level MDP and training a "Conductor" agent with reinforcement learning, we move beyond handcrafted, static reasoning loops towards dynamic, adaptive problem-solving. Our proposed framework, with its rich action space and carefully designed reward function, promises to enhance agent performance, efficiency, and autonomy.
+
+Future work will focus on expanding the meta-action space with more sophisticated cognitive operations, exploring methods for learning the reward function directly from data, and applying the ADF to other complex domains such as automated scientific discovery and software engineering.
+
+\bibliographystyle{plain}
+\begin{thebibliography}{1}
+
+\bibitem{qiao2025webresearcher}
+Zile Qiao, Guoxin Chen, Xuanzhong Chen, et al.
+\newblock WebResearcher: Unleashing unbounded reasoning capability in Long-Horizon Agents.
+\newblock {\em arXiv preprint arXiv:2509.13309}, 2025.
+\newblock \href{http://arxiv.org/pdf/2509.13309v1}{http://arxiv.org/pdf/2509.13309v1}
+
+\bibitem{yao2022react}
+Shunyu Yao, Jeffrey Zhao, Dian Yu, et al.
+\newblock ReAct: Synergizing Reasoning and Acting in Language Models.
+\newblock {\em arXiv preprint arXiv:2210.03629}, 2022.
+
+\bibitem{barto2003recent}
+Andrew G. Barto and Sridhar Mahadevan.
+\newblock Recent advances in hierarchical reinforcement learning.
+\newblock {\em Discrete Event Dynamic Systems}, 13(4):341--379, 2003.
+
+\bibitem{schulman2017proximal}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock Proximal Policy Optimization Algorithms.
+\newblock {\em arXiv preprint arXiv:1707.06347}, 2017.
+
+\bibitem{phan2025humanity}
+Long Phan, Alice Gatti, Ziwen Han, et al.
+\newblock Humanity's Last Exam.
+\newblock {\em arXiv preprint arXiv:2501.14249}, 2025.
+
+\bibitem{wei2025browsecomp}
+Jason Wei, Zhiqing Sun, Spencer Papay, et al.
+\newblock Browsecomp: A simple yet challenging benchmark for browsing agents.
+\newblock {\em arXiv preprint arXiv:2504.12516}, 2025.
+
+\end{thebibliography}
+
+\end{document}
